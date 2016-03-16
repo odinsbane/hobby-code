@@ -32,13 +32,11 @@ import java.lang.ref.SoftReference;
 import java.lang.ref.WeakReference;
 import java.net.MalformedURLException;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -177,6 +175,22 @@ public class ImageViewer extends Application {
         count = count>0?count:1;
         int i = 0;
         long first = 0;
+        Pattern p = Pattern.compile("[0-9]*");
+
+        Comparator<File> c = Comparator.comparingInt(f->{
+            Matcher m = p.matcher(f.getName());
+            int index = 0;
+            int l = 0;
+            while(m.find()){
+                String tag = m.group(0);
+                if(tag.length()>l){
+                    index = Integer.parseInt(tag);
+                    l = tag.length();
+                }
+            }
+            return index;
+        });
+        Arrays.sort(imageFiles, c.thenComparing(Comparator.comparingLong(File::lastModified)));
         for(File f: imageFiles){
             if(i==0){
                 first = f.lastModified();
