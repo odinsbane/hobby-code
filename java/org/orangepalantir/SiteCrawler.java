@@ -1,5 +1,15 @@
 package org.orangepalantir;
 
+import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.scene.Scene;
+import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.scene.layout.VBox;
+import javafx.stage.Stage;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -15,26 +25,42 @@ import java.util.regex.Pattern;
 /**
  * Created by melkor on 3/17/16.
  */
-public class SiteCrawler {
-    final String host;
-    final String hostUrl;
+public class SiteCrawler extends Application{
+    static String input;
+    String host;
+    String hostUrl;
     Set<String> visitedLocations = new HashSet<>();
     Set<String> possibleLocations = new HashSet<>();
     Set<String> images = new HashSet<>();
-    public SiteCrawler(String host){
+
+    Set<String> urls = new HashSet<>();
+    VBox box;
+    public void boot(String host){
         this.host = host;
         hostUrl = "https://" + host;
         possibleLocations.add("/");
+
     }
 
-    public void crawl() throws IOException {
+    public void crawl() {
         while(possibleLocations.size()>0){
             Set<String> tryingLocations = new HashSet<>(possibleLocations);
             for(String loc: tryingLocations){
-                visitedLocations.add(loc);
-                grabLocations(loc);
+                if(!visitedLocations.add(loc)){
+                    possibleLocations.remove(loc);
+                    continue;
+                }
+                try {
+                    grabLocations(loc);
+                    Platform.runLater(()->{box.getChildren().add(new Label(loc));});
+                } catch(IOException exc){
+                    System.out.println("failed at loc: " + loc);
+                    exc.printStackTrace();
+                }
+                for(String image: images){
+                    add(image);
+                }
             }
-
         }
 
     }
@@ -49,12 +75,12 @@ public class SiteCrawler {
     private void grabLocations(String location) throws IOException {
         URL url = new URL("https", host, location);
         String testData = getText(url);
-
         //get the current root
         String root = getRoot(location);
 
         populateData(root, testData);
         populateImages(root, testData);
+
     }
 
     private void populateImages(String root, String testData) {
@@ -119,13 +145,15 @@ public class SiteCrawler {
 
         }
         for(String loc: candidateLocations){
-            if(loc.endsWith("/")){
+            possibleLocations.add(loc);
+
+            /*if(loc.endsWith("/")){
                 possibleLocations.add(loc);
             } else if(loc.endsWith("htm")){
                 possibleLocations.add(loc);
             } else if(loc.endsWith("html")){
                 possibleLocations.add(loc);
-            }
+            }*/
         }
     }
 
@@ -154,15 +182,35 @@ public class SiteCrawler {
 
 
     public static void main(String[] args){
-        try {
-            new SiteCrawler("asmallorange.com").crawl();
-        } catch (MalformedURLException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        input = args[0];
+        launch(args);
+    }
 
+    @Override
+    public void start(Stage stage) throws Exception {
+        box = new VBox();
+        box.getChildren().add(new Label("populating..."));
+        stage.setScene(new Scene(new ScrollPane(box)));
+        stage.show();
+        boot(input);
+        new Thread(()->{
+            this.crawl();
+        }).start();
     }
 
 
+    public void add(String address) {
+        if (urls.add(address)) {
+            System.out.println(hostUrl + address);
+
+            Platform.runLater(new Runnable(){
+                @Override
+                public void run() {
+                    Image img = new Image(hostUrl + address);
+                    box.getChildren().add(new ImageView(img));
+                }
+            });
+
+        }
+    }
 }
