@@ -169,11 +169,10 @@ public class ImageViewer extends Application {
             String ext = borked[borked.length-1].toLowerCase();
             return imgs.contains(ext);
         });
-        images.clear();
-        int n = imageFiles.length;
+        //images.clear();
+        int n = imageFiles.length + images.size();
         int count = n/100;
         count = count>0?count:1;
-        int i = 0;
         long first = 0;
         Pattern p = Pattern.compile("[0-9]*");
 
@@ -191,6 +190,7 @@ public class ImageViewer extends Application {
             return index;
         });
         Arrays.sort(imageFiles, c.thenComparing(Comparator.comparingLong(File::lastModified)));
+        int i = 0 + images.size();
         for(File f: imageFiles){
             if(i==0){
                 first = f.lastModified();
@@ -198,7 +198,8 @@ public class ImageViewer extends Application {
             images.add(new FileInfo(i, f, f.lastModified()-first));
             i++;
             if(i%count==0){
-                System.out.println(i*100.0/n);
+                int ss = i+images.size();
+                System.out.println(ss*100.0/n);
             }
 
             if(quitting|toLoad.size()>0){
