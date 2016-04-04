@@ -51,7 +51,7 @@ public class ImageViewer extends Application {
     boolean playing = false;
     boolean quitting = false;
     Label total, current, time, name;
-
+    Long first;
     Slider select;
 
     String labelStyle = "-fx-min-width: %1$dpx;-fx-pref-width: %1$dpx;-fx-max-width: %1$dpx;-fx-text-alignment: right;" +
@@ -170,10 +170,9 @@ public class ImageViewer extends Application {
             return imgs.contains(ext);
         });
         //images.clear();
-        int n = imageFiles.length + images.size();
+        int n = imageFiles.length;
         int count = n/100;
         count = count>0?count:1;
-        long first = 0;
         Pattern p = Pattern.compile("[0-9]*");
 
         Comparator<File> c = Comparator.comparingInt(f->{
@@ -189,17 +188,17 @@ public class ImageViewer extends Application {
             }
             return index;
         });
+
         Arrays.sort(imageFiles, c.thenComparing(Comparator.comparingLong(File::lastModified)));
-        int i = 0 + images.size();
+        int i = 0;
         for(File f: imageFiles){
-            if(i==0){
+            if(images.size()==0){
                 first = f.lastModified();
             }
-            images.add(new FileInfo(i, f, f.lastModified()-first));
+            images.add(new FileInfo(images.size(), f, f.lastModified()-first));
             i++;
             if(i%count==0){
-                int ss = i+images.size();
-                System.out.println(ss*100.0/n);
+                System.out.println(i*100.0/n);
             }
 
             if(quitting|toLoad.size()>0){
@@ -303,6 +302,9 @@ public class ImageViewer extends Application {
             Duration duration = Duration.ofMillis(time);
             long millis = duration.toMillis()%1000;
             long secs = duration.toMillis()/1000%60;
+            if(duration.toHours()>0){
+                System.out.println("time");
+            }
             this.time = String.format("%02d::%02d::%02d.%03d",duration.toHours()%24, duration.toMinutes()%60, secs, millis);
             this.index = String.format("%d", index);
             imgRef = new SoftReference<>(null);
