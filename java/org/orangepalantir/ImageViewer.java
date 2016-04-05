@@ -32,9 +32,14 @@ import java.lang.ref.SoftReference;
 import java.lang.ref.WeakReference;
 import java.net.MalformedURLException;
 import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -53,7 +58,9 @@ public class ImageViewer extends Application {
     Label total, current, time, name;
     Long first;
     Slider select;
-
+    boolean forward = true;
+    ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    Future playTask;
     String labelStyle = "-fx-min-width: %1$dpx;-fx-pref-width: %1$dpx;-fx-max-width: %1$dpx;-fx-text-alignment: right;" +
             "-fx-padding: 10px;-fx-border-width: 1 ;-fx-border-color: black;";
 
@@ -63,6 +70,7 @@ public class ImageViewer extends Application {
 
     @Override
     public void start(Stage primaryStage) throws Exception {
+
         primaryStage.setTitle("Hello World!");
 
         VBox root = new VBox();
@@ -89,6 +97,7 @@ public class ImageViewer extends Application {
 
         Button play = new Button("play");
         play.addEventHandler(ActionEvent.ACTION, (evt)->{
+            forward=true;
             play.setText(playing?"play":"stop");
             playing = !playing;
             synchronized(view){
@@ -96,10 +105,18 @@ public class ImageViewer extends Application {
             }
         });
 
+
+
         Button next = new Button("next");
-        next.addEventHandler(ActionEvent.ACTION, e->nextImage());
+
+        next.addEventHandler(MouseEvent.MOUSE_PRESSED, e->{nextImage(); forward=true; schedulePlay();});
+        next.addEventHandler(MouseEvent.MOUSE_RELEASED, e->cancelPlay());
+
         Button prev = new Button("prev");
-        prev.addEventHandler(ActionEvent.ACTION, e->previousImage());
+        prev.addEventHandler(MouseEvent.MOUSE_PRESSED, e->{previousImage();forward=false; schedulePlay();});
+        prev.addEventHandler(MouseEvent.MOUSE_RELEASED, e->cancelPlay());
+
+
         select = new Slider(0, 1, 0);
         select.addEventHandler(MouseEvent.MOUSE_CLICKED, e->{
             int dex = (int)(select.getValue()*images.size());
@@ -148,7 +165,7 @@ public class ImageViewer extends Application {
             quitting = true;
             player.interrupt();
             reader.interrupt();
-
+            scheduler.shutdown();
             synchronized(view){
                 view.notifyAll();
             }
@@ -169,7 +186,6 @@ public class ImageViewer extends Application {
             String ext = borked[borked.length-1].toLowerCase();
             return imgs.contains(ext);
         });
-        //images.clear();
         int n = imageFiles.length;
         int count = n/100;
         count = count>0?count:1;
@@ -220,6 +236,25 @@ public class ImageViewer extends Application {
 
     }
 
+    private void cancelPlay(){
+        playTask.cancel(false);
+        scheduler.submit(()->{
+            synchronized(view){
+                playing = false;
+            }
+        });
+    }
+    public void schedulePlay(){
+        playTask = scheduler.schedule(
+            ()->{
+                synchronized(view){
+                    playing = true;
+                    view.notifyAll();
+                }
+            }, 500, TimeUnit.MILLISECONDS
+        );
+    }
+
     private void previousImage(){
         if(images.size()==0) return;
         int c = getCurrentIndex();
@@ -253,8 +288,8 @@ public class ImageViewer extends Application {
     public int getCurrentIndex(){
         return Integer.parseInt(current.getText());
     }
+
     private void playLoop(){
-        int index = 0;
         boolean interrupted = false;
         while(!interrupted){
 
@@ -265,8 +300,11 @@ public class ImageViewer extends Application {
                     playing=false;
                     break;
                 }
-                nextImage();
-
+                if(forward) {
+                    nextImage();
+                } else{
+                    previousImage();
+                }
                 try {
                     long dif = System.currentTimeMillis() - start;
                     if(dif<30) {
@@ -302,9 +340,6 @@ public class ImageViewer extends Application {
             Duration duration = Duration.ofMillis(time);
             long millis = duration.toMillis()%1000;
             long secs = duration.toMillis()/1000%60;
-            if(duration.toHours()>0){
-                System.out.println("time");
-            }
             this.time = String.format("%02d::%02d::%02d.%03d",duration.toHours()%24, duration.toMinutes()%60, secs, millis);
             this.index = String.format("%d", index);
             imgRef = new SoftReference<>(null);
