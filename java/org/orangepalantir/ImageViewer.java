@@ -28,9 +28,14 @@ import javafx.stage.WindowEvent;
 import java.awt.FileDialog;
 import java.io.File;
 import java.io.FileFilter;
+import java.io.IOException;
 import java.lang.ref.SoftReference;
 import java.lang.ref.WeakReference;
 import java.net.MalformedURLException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -55,7 +60,9 @@ public class ImageViewer extends Application {
     BlockingQueue<File> toLoad = new ArrayBlockingQueue<File>(1);
     boolean playing = false;
     boolean quitting = false;
+    Path outdir;
     Label total, current, time, name;
+    int currentIndex;
     Long first;
     Slider select;
     boolean forward = true;
@@ -123,8 +130,22 @@ public class ImageViewer extends Application {
             selectImage(dex);
         });
         HBox controls = new HBox();
+        Button removeCurrent = new Button("remove");
+        removeCurrent.addEventHandler(ActionEvent.ACTION, (evt)->{
+            int i = Integer.parseInt(current.getText());
+            removeRange(i,i);
+            previousImage();
+        });
+        Button removeRange = new Button("remove...");
+        Button copyCurrent = new Button("copy");
+        Button copyRange = new Button("copy...");
+        Button setOuputDirectory = new Button("output...");
 
-        controls.getChildren().addAll(play, select, next, prev);
+        setOuputDirectory.addEventHandler(ActionEvent.ACTION, (evt)->{
+            chooseOutdir(primaryStage);
+        });
+
+        controls.getChildren().addAll(play, select, next, prev, removeCurrent, removeRange, copyCurrent, copyRange, setOuputDirectory);
 
         HBox display = new HBox();
         total = new Label("0");
@@ -175,6 +196,38 @@ public class ImageViewer extends Application {
 
 
     }
+    private void chooseOutdir(Stage stage){
+        DirectoryChooser chooser = new DirectoryChooser();
+        chooser.setTitle("set output directory");
+        File f = chooser.showDialog(stage);
+        if(f!=null){
+            outdir = f.toPath();
+        }
+    }
+    private void copyImageRange(int start, int end, Path directory){
+        for(int i = start; i<=end; i++){
+            File old = images.get(start).source;
+            Path newer = directory.resolve( old.getName() );
+            try {
+                Files.copy(old.toPath(), newer, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void removeRange(int start, int end){
+        for(int i = 0; i<=end-start;i++){
+            images.remove(start);
+        }
+
+        first = images.get(0).time;
+        for(int i = 0; i<images.size();i++){
+            images.get(i).setIndex(i);
+        }
+    }
+
+
     final static List<String> imgs = Arrays.stream(new String[]{"png", "jpg", "gif"}).collect(Collectors.toList());
 
     private void loadImages(File s) {
@@ -211,7 +264,7 @@ public class ImageViewer extends Application {
             if(images.size()==0){
                 first = f.lastModified();
             }
-            images.add(new FileInfo(images.size(), f, f.lastModified()-first));
+            images.add(new FileInfo(images.size(), f, f.lastModified()));
             i++;
             if(i%count==0){
                 System.out.println(i*100.0/n);
@@ -230,10 +283,8 @@ public class ImageViewer extends Application {
 
     private void nextImage(){
         if(images.size()==0) return;
-        int c = getCurrentIndex();
-        c = (c+1)%images.size();
-        setImage(images.get(c));
-
+        currentIndex = (currentIndex+1)%images.size();
+        setImage(images.get(currentIndex));
     }
 
     private void cancelPlay(){
@@ -257,23 +308,20 @@ public class ImageViewer extends Application {
 
     private void previousImage(){
         if(images.size()==0) return;
-        int c = getCurrentIndex();
-        if(c==0){
-            c  = images.size() -1;
+        if(currentIndex==0){
+            currentIndex  = images.size() -1;
         } else{
-            c = c-1;
+            currentIndex = currentIndex-1;
         }
 
-        setImage(images.get(c));
+        setImage(images.get(currentIndex));
     }
 
     private void setImage(FileInfo inf){
         final Image img = inf.getImage();
         Platform.runLater(()->{
             view.setImage(img);
-            name.setText(inf.name);
-            current.setText(inf.index);
-            time.setText(inf.time);
+            updateLabels();
             select.setValue(inf.i*1.0/images.size());
         });
     }
@@ -283,10 +331,6 @@ public class ImageViewer extends Application {
             return;
         }
         setImage(images.get(i));
-    }
-
-    public int getCurrentIndex(){
-        return Integer.parseInt(current.getText());
     }
 
     private void playLoop(){
@@ -325,11 +369,18 @@ public class ImageViewer extends Application {
         }
 
     }
+    private void updateLabels(){
+        total.setText("" + images.size());
+        //Label total, current, time, name;
+        current.setText("" + currentIndex);
+        time.setText(images.get(currentIndex).getTimeString(first));
+        name.setText(images.get(currentIndex).name);
 
+    }
     class FileInfo{
         final String name;
-        final String time;
-        final String index;
+        final Long time;
+        int index;
         final int i;
         SoftReference<Image> imgRef;
         final File source;
@@ -337,12 +388,13 @@ public class ImageViewer extends Application {
             source = f;
             this.i = index;
             name = f.getName();
-            Duration duration = Duration.ofMillis(time);
-            long millis = duration.toMillis()%1000;
-            long secs = duration.toMillis()/1000%60;
-            this.time = String.format("%02d::%02d::%02d.%03d",duration.toHours()%24, duration.toMinutes()%60, secs, millis);
-            this.index = String.format("%d", index);
+            this.time=time;
+            this.index = index;
             imgRef = new SoftReference<>(null);
+        }
+
+        public void setIndex(int i){
+            this.index = i;
         }
 
         public Image getImage(){
@@ -354,6 +406,13 @@ public class ImageViewer extends Application {
             } else{
                 return img;
             }
+        }
+
+        public String getTimeString(long t){
+            Duration duration = Duration.ofMillis(time-t);
+            long millis = duration.toMillis()%1000;
+            long secs = duration.toMillis()/1000%60;
+            return String.format("%02d::%02d::%02d.%03d",duration.toHours()%24, duration.toMinutes()%60, secs, millis);
         }
 
         private Image loadImage(){
