@@ -6,15 +6,21 @@ import javafx.event.ActionEvent;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuBar;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.Slider;
+import javafx.scene.control.TextField;
+import javafx.scene.control.TextInputControl;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.MouseEvent;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.StackPane;
@@ -134,11 +140,32 @@ public class ImageViewer extends Application {
         removeCurrent.addEventHandler(ActionEvent.ACTION, (evt)->{
             int i = Integer.parseInt(current.getText());
             removeRange(i,i);
-            previousImage();
         });
         Button removeRange = new Button("remove...");
+        removeRange.addEventHandler(ActionEvent.ACTION, (evt)->{
+            int[] endPoints = getRange("remove");
+            if(endPoints!=null) {
+                removeRange(endPoints[0], endPoints[1]);
+            }
+        });
         Button copyCurrent = new Button("copy");
+        copyCurrent.addEventHandler(ActionEvent.ACTION, (evt)->{
+            if(outdir==null){
+                chooseOutdir(primaryStage);
+                if(outdir==null) return;
+            }
+            copyImageRange(currentIndex, currentIndex, outdir);
+        });
         Button copyRange = new Button("copy...");
+        copyRange.addEventHandler(ActionEvent.ACTION, (evt)->{
+            if(outdir==null){
+                chooseOutdir(primaryStage);
+                if(outdir==null) return;
+            }
+            int[] ep = getRange("copy");
+            if(ep==null) return;
+            copyImageRange(ep[0], ep[1], outdir);
+        });
         Button setOuputDirectory = new Button("output...");
 
         setOuputDirectory.addEventHandler(ActionEvent.ACTION, (evt)->{
@@ -196,6 +223,85 @@ public class ImageViewer extends Application {
 
 
     }
+
+    private int[] getRange(String acceptButtonLabel) {
+        int[] range = {-1, -1};
+        Dialog<int[]> dialog= new Dialog<>();
+        dialog.setTitle("enter range end points");
+        TextInputControl low = new TextField("");
+        TextInputControl high = new TextField("");
+        Label lLabel = new Label("low (inclussive): ");
+        Label hLabel = new Label("high (inclussive): ");
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+
+        grid.add(lLabel, 0,0);
+        grid.add(low, 1, 0);
+        grid.add(hLabel, 0, 1);
+        grid.add(high, 1, 1);
+
+        dialog.getDialogPane().setContent(grid);
+        ButtonType acceptButtonType = new ButtonType(acceptButtonLabel, ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(acceptButtonType, ButtonType.CANCEL);
+
+        Node ab = dialog.getDialogPane().lookupButton(acceptButtonType);
+        ab.setDisable(true);
+
+        low.textProperty().addListener((ob, old, nv)->{
+            boolean empty = nv.trim().isEmpty();
+            if(empty){
+                range[0] = -1;
+                ab.setDisable(true);
+            }
+            try{
+                int i = Integer.parseInt(nv);
+                range[0] = i;
+            } catch(Exception e){
+                range[0] = -1;
+                //not a good value;
+                ab.setDisable(true);
+            }
+            boolean ready = range[0]>=0 && range[1]>=range[0] && range[1]<images.size();
+            ab.setDisable(!ready);
+        });
+
+        high.textProperty().addListener((ob, old, nv)->{
+            boolean empty = nv.trim().isEmpty();
+            if(empty){
+                range[1] = -1;
+                ab.setDisable(true);
+            }
+            try{
+                int i = Integer.parseInt(nv);
+                range[1] = i;
+            } catch(Exception e){
+                range[1] = -1;
+                //not a good value;
+                ab.setDisable(true);
+            }
+            boolean ready = range[0]>=0 && range[1]>=range[0] && range[1]<images.size();
+            ab.setDisable(!ready);
+        });
+
+        dialog.setResultConverter(dialogButton -> {
+            if(dialogButton==acceptButtonType){
+
+                int a = Integer.parseInt(low.getText());
+                int b = Integer.parseInt(high.getText());
+                range[0] = a;
+                range[1] = b;
+                return range;
+            }
+            return null;
+        });
+
+        dialog.showAndWait();
+        return dialog.getResult();
+    }
+
+
     private void chooseOutdir(Stage stage){
         DirectoryChooser chooser = new DirectoryChooser();
         chooser.setTitle("set output directory");
@@ -216,14 +322,34 @@ public class ImageViewer extends Application {
         }
     }
 
+    /**
+     * Removes images from the list.
+     * @param start inclusive.
+     * @param end inclusive.
+     */
     private void removeRange(int start, int end){
-        for(int i = 0; i<=end-start;i++){
+        /*for(int i = 0; i<=end-start;i++){
             images.remove(start);
-        }
+        }*/
+        if(images.size()==0) return;
+        if(start>end) return;
 
+        FileInfo fi = images.get(currentIndex);
+
+        int s_start = start>0?start:0;
+        int s_end = end<images.size()?end:images.size()-1;
+        images.subList(s_start, s_end+1).clear();
         first = images.get(0).time;
         for(int i = 0; i<images.size();i++){
             images.get(i).setIndex(i);
+        }
+
+        if(fi.index<images.size()){
+            //same image, or an image at the same index.
+            setImage(images.get(fi.index));
+        } else if(images.size()>0){
+            //last image
+            setImage(images.get(images.size()-1));
         }
     }
 
@@ -259,16 +385,12 @@ public class ImageViewer extends Application {
         });
 
         Arrays.sort(imageFiles, c.thenComparing(Comparator.comparingLong(File::lastModified)));
-        int i = 0;
         for(File f: imageFiles){
             if(images.size()==0){
                 first = f.lastModified();
             }
             images.add(new FileInfo(images.size(), f, f.lastModified()));
-            i++;
-            if(i%count==0){
-                System.out.println(i*100.0/n);
-            }
+
 
             if(quitting|toLoad.size()>0){
                 break;
@@ -320,9 +442,9 @@ public class ImageViewer extends Application {
     private void setImage(FileInfo inf){
         final Image img = inf.getImage();
         Platform.runLater(()->{
+            currentIndex = inf.index;
             view.setImage(img);
             updateLabels();
-            select.setValue(inf.i*1.0/images.size());
         });
     }
 
@@ -375,7 +497,7 @@ public class ImageViewer extends Application {
         current.setText("" + currentIndex);
         time.setText(images.get(currentIndex).getTimeString(first));
         name.setText(images.get(currentIndex).name);
-
+        select.setValue(currentIndex*1.0/images.size());
     }
     class FileInfo{
         final String name;
