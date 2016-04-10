@@ -108,87 +108,8 @@ public class ImageViewer extends Application {
         List<Node> children = root.getChildren();
         children.add(view);
 
-        Button play = new Button("play");
-        play.addEventHandler(ActionEvent.ACTION, (evt)->{
-            forward=true;
-            play.setText(playing?"play":"stop");
-            playing = !playing;
-            synchronized(view){
-                view.notifyAll();
-            }
-        });
-
-
-
-        Button next = new Button("next");
-
-        next.addEventHandler(MouseEvent.MOUSE_PRESSED, e->{nextImage(); forward=true; schedulePlay();});
-        next.addEventHandler(MouseEvent.MOUSE_RELEASED, e->cancelPlay());
-
-        Button prev = new Button("prev");
-        prev.addEventHandler(MouseEvent.MOUSE_PRESSED, e->{previousImage();forward=false; schedulePlay();});
-        prev.addEventHandler(MouseEvent.MOUSE_RELEASED, e->cancelPlay());
-
-
-        select = new Slider(0, 1, 0);
-        select.addEventHandler(MouseEvent.MOUSE_CLICKED, e->{
-            int dex = (int)(select.getValue()*images.size());
-            selectImage(dex);
-        });
-        HBox controls = new HBox();
-        Button removeCurrent = new Button("remove");
-        removeCurrent.addEventHandler(ActionEvent.ACTION, (evt)->{
-            int i = Integer.parseInt(current.getText());
-            removeRange(i,i);
-        });
-        Button removeRange = new Button("remove...");
-        removeRange.addEventHandler(ActionEvent.ACTION, (evt)->{
-            int[] endPoints = getRange("remove");
-            if(endPoints!=null) {
-                removeRange(endPoints[0], endPoints[1]);
-            }
-        });
-        Button copyCurrent = new Button("copy");
-        copyCurrent.addEventHandler(ActionEvent.ACTION, (evt)->{
-            if(outdir==null){
-                chooseOutdir(primaryStage);
-                if(outdir==null) return;
-            }
-            copyImageRange(currentIndex, currentIndex, outdir);
-        });
-        Button copyRange = new Button("copy...");
-        copyRange.addEventHandler(ActionEvent.ACTION, (evt)->{
-            if(outdir==null){
-                chooseOutdir(primaryStage);
-                if(outdir==null) return;
-            }
-            int[] ep = getRange("copy");
-            if(ep==null) return;
-            copyImageRange(ep[0], ep[1], outdir);
-        });
-        Button setOuputDirectory = new Button("output...");
-
-        setOuputDirectory.addEventHandler(ActionEvent.ACTION, (evt)->{
-            chooseOutdir(primaryStage);
-        });
-
-        controls.getChildren().addAll(play, select, next, prev, removeCurrent, removeRange, copyCurrent, copyRange, setOuputDirectory);
-
-        HBox display = new HBox();
-        total = new Label("0");
-        total.setStyle(String.format(labelStyle, 75));
-        current = new Label("0");
-        current.setStyle(String.format(labelStyle, 75));
-
-        time = new Label("0");
-        time.setStyle(String.format(labelStyle, 200));
-
-        name = new Label("-");
-        name.setStyle(String.format(labelStyle, 250));
-
-        Label zero = new Label("0");
-        zero.setStyle(String.format(labelStyle, 75));
-        display.getChildren().addAll(zero, current, total, time, name);
+        Node display = buildDisplay();
+        Node controls = buildControls(primaryStage);
 
         children.add(display);
         children.add(controls);
@@ -222,6 +143,103 @@ public class ImageViewer extends Application {
         player.start();
 
 
+    }
+
+
+    private Node buildDisplay(){
+        HBox display = new HBox();
+        total = new Label("0");
+        total.setStyle(String.format(labelStyle, 75));
+        current = new Label("0");
+        current.setStyle(String.format(labelStyle, 75));
+
+        time = new Label("0");
+        time.setStyle(String.format(labelStyle, 200));
+
+        name = new Label("-");
+        name.setStyle(String.format(labelStyle, 250));
+
+        Label zero = new Label("0");
+        zero.setStyle(String.format(labelStyle, 75));
+        display.getChildren().addAll(zero, current, total, time, name);
+        return display;
+    }
+
+    private Node buildControls(Stage primaryStage){
+        GridPane controls = new GridPane();
+
+        Button play = new Button("play");
+        select = new Slider(0, 1, 0);
+        Button next = new Button("next");
+        Button prev = new Button("prev");
+        controls.add(play, 0, 0);
+        controls.add(select, 1, 0, 2, 1);
+        controls.add(prev, 3, 0);
+        controls.add(next, 4, 0);
+
+        Button setOuputDirectory = new Button("output...");
+        Button removeCurrent = new Button("remove");
+        Button removeRange = new Button("remove...");
+        Button copyCurrent = new Button("copy");
+        Button copyRange = new Button("copy...");
+        controls.add(setOuputDirectory, 0, 1);
+        controls.add(removeCurrent, 1, 1);
+        controls.add(removeRange, 2, 1);
+        controls.add(copyCurrent, 3, 1);
+        controls.add(copyRange, 4, 1);
+
+        next.addEventHandler(MouseEvent.MOUSE_PRESSED, e->{nextImage(); forward=true; schedulePlay();});
+        next.addEventHandler(MouseEvent.MOUSE_RELEASED, e->cancelPlay());
+        prev.addEventHandler(MouseEvent.MOUSE_PRESSED, e->{previousImage();forward=false; schedulePlay();});
+        prev.addEventHandler(MouseEvent.MOUSE_RELEASED, e->cancelPlay());
+        play.addEventHandler(ActionEvent.ACTION, (evt)->{
+            forward=true;
+            play.setText(playing?"play":"stop");
+            playing = !playing;
+            synchronized(view){
+                view.notifyAll();
+            }
+        });
+
+
+        select.addEventHandler(MouseEvent.MOUSE_CLICKED, e->{
+            int dex = (int)(select.getValue()*images.size());
+            selectImage(dex);
+        });
+
+
+        removeCurrent.addEventHandler(ActionEvent.ACTION, (evt)->{
+            int i = Integer.parseInt(current.getText());
+            removeRange(i,i);
+        });
+        removeRange.addEventHandler(ActionEvent.ACTION, (evt)->{
+            int[] endPoints = getRange("remove");
+            if(endPoints!=null) {
+                removeRange(endPoints[0], endPoints[1]);
+            }
+        });
+        copyCurrent.addEventHandler(ActionEvent.ACTION, (evt)->{
+            if(outdir==null){
+                chooseOutdir(primaryStage);
+                if(outdir==null) return;
+            }
+            copyImageRange(currentIndex, currentIndex, outdir);
+        });
+        copyRange.addEventHandler(ActionEvent.ACTION, (evt)->{
+            if(outdir==null){
+                chooseOutdir(primaryStage);
+                if(outdir==null) return;
+            }
+            int[] ep = getRange("copy");
+            System.out.println("copying: " + ep[0] + ", " + ep[1]);
+            if(ep==null) return;
+            copyImageRange(ep[0], ep[1], outdir);
+        });
+
+        setOuputDirectory.addEventHandler(ActionEvent.ACTION, (evt)->{
+            chooseOutdir(primaryStage);
+        });
+        return controls;
     }
 
     private int[] getRange(String acceptButtonLabel) {
@@ -312,7 +330,7 @@ public class ImageViewer extends Application {
     }
     private void copyImageRange(int start, int end, Path directory){
         for(int i = start; i<=end; i++){
-            File old = images.get(start).source;
+            File old = images.get(i).source;
             Path newer = directory.resolve( old.getName() );
             try {
                 Files.copy(old.toPath(), newer, StandardCopyOption.REPLACE_EXISTING);
@@ -339,7 +357,11 @@ public class ImageViewer extends Application {
         int s_start = start>0?start:0;
         int s_end = end<images.size()?end:images.size()-1;
         images.subList(s_start, s_end+1).clear();
-        first = images.get(0).time;
+
+        if(images.size()>0) {
+            first = images.get(0).time;
+        }
+
         for(int i = 0; i<images.size();i++){
             images.get(i).setIndex(i);
         }
@@ -458,13 +480,12 @@ public class ImageViewer extends Application {
     private void playLoop(){
         boolean interrupted = false;
         while(!interrupted){
-
             if(playing){
                 long start = System.currentTimeMillis();
                 int n = images.size();
                 if(n==0){
                     playing=false;
-                    break;
+                    continue;
                 }
                 if(forward) {
                     nextImage();
@@ -489,8 +510,8 @@ public class ImageViewer extends Application {
                 }
             }
         }
-
     }
+
     private void updateLabels(){
         total.setText("" + images.size());
         //Label total, current, time, name;
