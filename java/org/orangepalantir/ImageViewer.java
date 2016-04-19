@@ -63,7 +63,7 @@ import java.util.stream.Collectors;
 public class ImageViewer extends Application {
     ImageView view;
     List<FileInfo> images = new ArrayList<>();
-    BlockingQueue<File> toLoad = new ArrayBlockingQueue<File>(1);
+    BlockingQueue<File> toLoad = new ArrayBlockingQueue<File>(100);
     boolean playing = false;
     boolean quitting = false;
     Path outdir;
@@ -95,13 +95,23 @@ public class ImageViewer extends Application {
 
         directory.addEventHandler(ActionEvent.ACTION, e->{
             DirectoryChooser chooser = new DirectoryChooser();
+
             File f = chooser.showDialog(primaryStage);
             if(f!=null) {
                 toLoad.add(f);
             }
         });
 
-        file.getItems().add(directory);
+        MenuItem parentDirectory = new MenuItem("parent directory");
+        parentDirectory.addEventHandler(ActionEvent.ACTION, e->{
+            DirectoryChooser chooser = new DirectoryChooser();
+
+            File f = chooser.showDialog(primaryStage);
+            if(f==null)return;
+            Arrays.stream(f.listFiles(File::isDirectory)).forEach(toLoad::add);
+        });
+
+        file.getItems().addAll(directory, parentDirectory);
         root.getChildren().add(bar);
 
         view = new ImageView();
@@ -122,6 +132,7 @@ public class ImageViewer extends Application {
         Thread reader = new Thread(()->{
             while(!quitting){
                 try {
+                    System.out.println("taking");
                     loadImages(toLoad.take());
                 } catch (InterruptedException e) {
                     quitting=true;
@@ -391,7 +402,6 @@ public class ImageViewer extends Application {
         int count = n/100;
         count = count>0?count:1;
         Pattern p = Pattern.compile("[0-9]*");
-
         Comparator<File> c = Comparator.comparingInt(f->{
             Matcher m = p.matcher(f.getName());
             int index = 0;
@@ -414,11 +424,10 @@ public class ImageViewer extends Application {
             images.add(new FileInfo(images.size(), f, f.lastModified()));
 
 
-            if(quitting|toLoad.size()>0){
+            if(quitting){
                 break;
             }
         }
-
         Platform.runLater(()->{
             total.setText(images.size() + "");
         });
