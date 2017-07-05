@@ -134,7 +134,7 @@ public class AnimatedObjects extends Application {
         root = new StackPane();
         main = new Scene(root, 100, 100);
 
-        canvas.getGraphicsContext2D().setFill(Color.BEIGE);
+        canvas.getGraphicsContext2D().setFill(new Color(1,1,1,0));
         canvas.getGraphicsContext2D().fillRect(0, 0, 64, 64);
         root.getChildren().add(canvas);
         root.getChildren().add(backView);
