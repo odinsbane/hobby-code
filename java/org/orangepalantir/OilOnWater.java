@@ -2,20 +2,22 @@ package org.orangepalantir;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseWheelEvent;
+import java.awt.event.MouseWheelListener;
 import java.awt.image.BufferedImage;
 import java.util.Arrays;
 import java.util.stream.IntStream;
 
 public class OilOnWater{
-    int height = 3;
-    int width = 3;
+    int height = 256;
+    int width = 256;
     double surfaceTension = 0.0;
     double diffusion = 0.0;
     double drag = 1.0;
-    double viscosity = 0.0;
+    double viscosity = 1.0;
     double rad = 0.0;
 
-    double dt = 0.001;
+    double dt = 0.01;
 
     double[] concentration;
     double[] dc;
@@ -39,22 +41,25 @@ public class OilOnWater{
         dc = new double[width*height];
         dp = new double[2*width*height];
 
-        /*
-        concentration[width/2 + (height/2)*width] = 100;
 
+        //createVerticalStripes();
+        createHorizontalStripes();
         for(int i = width/4;i<3*width/4; i++){
 
             for(int j = 0; j<5; j++){
                 momentum[2*(i + (height/4+j)*width)] = 5;
-                momentum[2*(i + (height/4+j)*width) + 1] = 0;
                 momentum[2*(i + (3*height/4+j)*width)] = -5;
-                momentum[2*(i + (3*height/4+j)*width) + 1] = 0;
-
             }
 
         }
-        */
-        momentum[2*(1 + 2*width)] = 1;
+
+        for(int i = 0; i<5; i++){
+            for(int j = height/3; j<2*height/3; j++){
+                momentum[2*(i + width/4 +(j)*width)+1] = 5;
+                momentum[2*(i + 3*width/4 + (j)*width)+1] = -5;
+            }
+        }
+
     }
     void createVerticalStripes(){
         for(int i = 0; i<width/20; i++){
@@ -62,6 +67,18 @@ public class OilOnWater{
                 for(int k = 0; k<5; k++){
                     int x = 20*i + k;
                     int y = j;
+                    concentration[x + y*width] = 5;
+                }
+            }
+        }
+    }
+
+    void createHorizontalStripes(){
+        for(int i = 0; i<width; i++){
+            for(int j = 0; j<height/20; j++){
+                for(int k = 0; k<5; k++){
+                    int x = i;
+                    int y = j*20 + k;
                     concentration[x + y*width] = 5;
                 }
             }
@@ -84,10 +101,10 @@ public class OilOnWater{
      * @param result {uxy, vxy}
      */
     void getTwoDValue(int x, int y, double[] values, double[] result){
+        if(y<0) y = y+height;
+        if(x<0) x = x+width;
         y = y%height;
         x = x%width;
-        x = x<0?x+width:x;
-        y = y<0?y+height:y;
         int dex = 2*(x + y*width);
         result[0] = values[dex];
         result[1] = values[dex+1];
@@ -112,13 +129,12 @@ public class OilOnWater{
         getTwoDValue(x-1, y, values, Vl);
         getTwoDValue(x, y+1, values, Vt);
         getTwoDValue(x, y-1, values, Vb);
-
+        double vxAve = (V[0] + Vl[0] + Vr[0])/3;
+        double vyAve = (V[1] + Vl[1] + Vr[1])/3;
         //flow in from left - flow out from right
-        result[0] = 0.5*(Vl[0] + V[0])*(Vl[0] - V[0]) + 0.5*(Vr[0] + V[0])*(Vr[0] - V[0])
-                  - 0.5*(Vt[1] + V[1])*(Vt[0] - V[0]) + 0.5*(Vb[1] + V[1])*(Vb[0] - V[0]);
+        result[0] = vxAve*(Vl[0] - Vr[0]) + vyAve*(Vb[0] - Vt[0]);
 
-        result[1] = 0.5*(Vl[0] + V[0])*(Vl[1] - V[1]) - 0.5*(Vr[0] + V[0])*(Vr[1] - V[1])
-                - 0.5*(Vt[1] + V[1])*(Vt[1] - V[1]) + 0.5*(Vb[1] + V[1])*(Vb[1] - V[1]);
+        result[1] = vxAve*(Vl[1] - Vr[1]) + vyAve*(Vb[0] - Vt[0]);
 
     }
 
@@ -197,15 +213,17 @@ public class OilOnWater{
         double[] d2p = new double[2];
         double[] pdotdelp = new double[2];
         for(int i = 0; i<concentration.length; i++){
+
             int x = i%width;
             int y = i/width;
             convectiveTerm(x, y, momentum, pdotdelp);
             laplace2D(x, y, momentum, d2p);
-            dp[2*i] = d2p[0]*viscosity -
+            dp[2*i] = d2p[0]*viscosity +
                       pdotdelp[0];
             dp[2*i+1] = d2p[1]*viscosity
-                        - pdotdelp[1];
-
+                        + pdotdelp[1];
+            firstDerivative1D(x, y, concentration, deltac);
+            dc[i] = -momentum[2*i]*deltac[0] + -momentum[2*i+1]*deltac[1];
         }
 
 
@@ -259,11 +277,14 @@ public class OilOnWater{
         BufferedImage yImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
         double min = Double.MAX_VALUE;
         double max = -min;
+        double sum = 0;
         for(int i = 0; i<momentum.length; i++){
             double p = momentum[i];
             min = min<p?min:p;
             max = p>max?p:max;
+            sum += p;
         }
+
         if(min>=0){
             min = -1;
         }
@@ -304,10 +325,11 @@ public class OilOnWater{
             updateMomentumImage();
         }
     }
+    double zoom = 1;
     public void showFrame(){
         JFrame frame = new JFrame("Oil on Water");
         JPanel image = new JPanel(){
-            double zoom = 256;
+
             @Override
             public void paintComponent(Graphics g){
                 g.drawImage(
@@ -344,6 +366,22 @@ public class OilOnWater{
                 );
             }
         };
+
+        image.addMouseWheelListener(new MouseWheelListener(){
+
+            @Override
+            public void mouseWheelMoved(MouseWheelEvent e) {
+
+                if(e.getWheelRotation()>0){
+                    zoom = zoom*0.99;
+                } else{
+                    zoom = zoom*1.01;
+                }
+                image.invalidate();
+                frame.validate();
+            }
+
+        });
 
         Timer time = new Timer(30, evt->{ image.repaint();});
         time.start();
