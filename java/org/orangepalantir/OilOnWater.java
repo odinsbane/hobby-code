@@ -3,23 +3,28 @@ package org.orangepalantir;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.util.Arrays;
+import java.util.stream.IntStream;
 
 public class OilOnWater{
-    int height = 32;
-    int width = 32;
-    double surfaceTension = -10.0;
+    int height = 3;
+    int width = 3;
+    double surfaceTension = 0.0;
     double diffusion = 0.0;
     double drag = 1.0;
     double viscosity = 0.0;
     double rad = 0.0;
 
-    double dt = 0.0001;
+    double dt = 0.001;
 
     double[] concentration;
     double[] dc;
     double[] momentum;
     double[] dp;
     BufferedImage visibleImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+    BufferedImage xMomentumImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+    BufferedImage yMomentumImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+
     OilOnWater(){
 
     }
@@ -34,17 +39,22 @@ public class OilOnWater{
         dc = new double[width*height];
         dp = new double[2*width*height];
 
+        /*
         concentration[width/2 + (height/2)*width] = 100;
 
-        for(int i = 0;i<width; i++){
+        for(int i = width/4;i<3*width/4; i++){
 
             for(int j = 0; j<5; j++){
-                momentum[2*(i + (height/4+j)*width)] = 0;
-                momentum[2*(i + (3*height/4+j)*width)] = 0;
+                momentum[2*(i + (height/4+j)*width)] = 5;
+                momentum[2*(i + (height/4+j)*width) + 1] = 0;
+                momentum[2*(i + (3*height/4+j)*width)] = -5;
+                momentum[2*(i + (3*height/4+j)*width) + 1] = 0;
 
             }
 
         }
+        */
+        momentum[2*(1 + 2*width)] = 1;
     }
     void createVerticalStripes(){
         for(int i = 0; i<width/20; i++){
@@ -65,6 +75,14 @@ public class OilOnWater{
         return values[x + y*width];
     }
 
+    /**
+     * Gets the value of a 2d vector field stored in a 1D array. The boundary conditions are assumed to be periodic.
+     *
+     * @param x
+     * @param y
+     * @param values 1d array storring 2, 2d values. eg {u00, v00, u10, v10, u20, v20, ... unm, vnm }
+     * @param result {uxy, vxy}
+     */
     void getTwoDValue(int x, int y, double[] values, double[] result){
         y = y%height;
         x = x%width;
@@ -73,6 +91,35 @@ public class OilOnWater{
         int dex = 2*(x + y*width);
         result[0] = values[dex];
         result[1] = values[dex+1];
+    }
+
+    /**
+     * Calculates ({u, v} dot del){u,v} for finite elements.
+     * @param x
+     * @param y
+     * @param values 2d array of vectors stored as a 1d array.
+     * @param result {u du_dx + v du_dy , u dv_dx  + v dv_dy }
+     */
+    void convectiveTerm( int x, int y, double[] values, double[] result){
+        double[] Vl = new double[2];
+        double[] Vr = new double[2];
+        double[] Vt = new double[2];
+        double[] Vb = new double[2];
+        double[] V = new double[2];
+
+        getTwoDValue(x, y, values, V);
+        getTwoDValue(x+1, y, values, Vr);
+        getTwoDValue(x-1, y, values, Vl);
+        getTwoDValue(x, y+1, values, Vt);
+        getTwoDValue(x, y-1, values, Vb);
+
+        //flow in from left - flow out from right
+        result[0] = 0.5*(Vl[0] + V[0])*(Vl[0] - V[0]) + 0.5*(Vr[0] + V[0])*(Vr[0] - V[0])
+                  - 0.5*(Vt[1] + V[1])*(Vt[0] - V[0]) + 0.5*(Vb[1] + V[1])*(Vb[0] - V[0]);
+
+        result[1] = 0.5*(Vl[0] + V[0])*(Vl[1] - V[1]) - 0.5*(Vr[0] + V[0])*(Vr[1] - V[1])
+                - 0.5*(Vt[1] + V[1])*(Vt[1] - V[1]) + 0.5*(Vb[1] + V[1])*(Vb[1] - V[1]);
+
     }
 
     void firstDerivative1D(int x, int y, double[] values, double[] result){
@@ -88,6 +135,13 @@ public class OilOnWater{
         return dc_dxdx + dc_dydy;
     }
 
+    /**
+     * Values contains a vector field of u,v at each point.
+     * @param x
+     * @param y
+     * @param values
+     * @param result
+     */
     void laplace2D(int x, int y, double[] values, double[] result){
         double[] up2 = new double[2];
         double[] um2 = new double[2];
@@ -117,7 +171,7 @@ public class OilOnWater{
      * @param x
      * @param y
      * @param values
-     * @param result { dux/dx, duy/dx, dux/dy, duy/dy }
+     * @param result { du/dx, dv/dx, du/dy, dv/dy }
      *
      */
     void firstDerivative2D(int x, int y, double[] values, double[] result){
@@ -135,66 +189,23 @@ public class OilOnWater{
 
     }
 
-    double curl(int x, int y, double[] values){
-        double[] xp = new double[2];
-        double[] xm = new double[2];
-        getTwoDValue(x+1, y, values, xp);
-        getTwoDValue(x-1, y, values, xm);
-
-        double[] yp = new double[2];
-        double[] ym = new double[2];
-        getTwoDValue(x, y+1, values, yp);
-        getTwoDValue(x, y-1, values, ym);
-
-        return 0.5*( xp[1] - xm[1] - yp[0] + ym[0]);
-    }
-
-    void curl2(int x, int y, double[] values, double[] result){
-        double[] xp = new double[2];
-        double[] xm = new double[2];
-        getTwoDValue(x+1, y, values, xp);
-        getTwoDValue(x-1, y, values, xm);
-
-        double[] yp = new double[2];
-        double[] ym = new double[2];
-        getTwoDValue(x, y+1, values, yp);
-        getTwoDValue(x, y-1, values, ym);
-        result[0] = 0.5*(xp[1] - xm[1]);
-        result[1] = 0.5*(yp[0] - ym[0]);
-
-    }
 
 
-    void gradCurl(int x, int y, double[] values, double[] result){
-        result[0] = curl(x+1, y, values) - curl(x-1, y, values);
-        result[1] = curl(x, y+1, values) - curl(x, y-1, values);
-    }
 
     public void step(){
         double[] deltac = new double[2];
         double[] d2p = new double[2];
-        double[] gcp = new double[2];
-        double[] delp = new double[4];;
+        double[] pdotdelp = new double[2];
         for(int i = 0; i<concentration.length; i++){
             int x = i%width;
             int y = i/width;
-            firstDerivative1D(x, y, concentration, deltac);
+            convectiveTerm(x, y, momentum, pdotdelp);
             laplace2D(x, y, momentum, d2p);
-            curl2(x, y, momentum, gcp);
-            firstDerivative2D(x, y, momentum, delp);
-            dp[2*i] = d2p[0]*viscosity +
-                      delp[0]*momentum[2*i]*rad +
-                      delp[2]*momentum[2*i+1]*0;
+            dp[2*i] = d2p[0]*viscosity -
+                      pdotdelp[0];
             dp[2*i+1] = d2p[1]*viscosity
-                        + gcp[1]*rad
-                        + delp[1]*momentum[2*i]*0
-                        + delp[3]*momentum[2*i+1]*rad;
+                        - pdotdelp[1];
 
-            dc[i] = diffusion*laplace1D(x, y, concentration)
-                    - momentum[2*i]*deltac[0]
-                    - momentum[2*i+1]*deltac[1]
-                    + surfaceTension*deltac[0]
-                    + surfaceTension*deltac[1];
         }
 
 
@@ -215,7 +226,12 @@ public class OilOnWater{
         int r = interpolate(a.getRed(), b.getRed(), f);
         int g = interpolate(a.getGreen(), b.getGreen(), f);
         int B = interpolate(a.getBlue(), b.getBlue(), f);
-        return new Color(r, g, B);
+        try{
+            return new Color(r, g, B);
+        } catch(Exception e){
+            System.out.println(f);
+        }
+        return Color.WHITE;
     }
 
     int interpolate(int a, int b, double f){
@@ -235,33 +251,96 @@ public class OilOnWater{
         }
         visibleImage = img;
     }
+
+
+    public void updateMomentumImage(){
+
+        BufferedImage xImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        BufferedImage yImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        double min = Double.MAX_VALUE;
+        double max = -min;
+        for(int i = 0; i<momentum.length; i++){
+            double p = momentum[i];
+            min = min<p?min:p;
+            max = p>max?p:max;
+        }
+        if(min>=0){
+            min = -1;
+        }
+        if(max<=0){
+            max = 1;
+        }
+
+
+        for(int i = 0; i<concentration.length; i++){
+
+            int c;
+            double p = momentum[2*i];
+            if(p>0){
+                c = interpolate(Color.RED, Color.BLACK, p/max).getRGB();
+            } else{
+                c = interpolate(Color.BLUE, Color.BLACK, p/min).getRGB();
+            }
+            xImage.setRGB(i%width, i/width, c);
+
+            p = momentum[2*i + 1];
+            if(p>0){
+                c = interpolate(Color.RED, Color.BLACK, p/max).getRGB();
+            } else{
+                c = interpolate(Color.BLUE, Color.BLACK, p/min).getRGB();
+            }
+            yImage.setRGB(i%width, i/width, c);
+
+        }
+        xMomentumImage = xImage;
+        yMomentumImage = yImage;
+    }
+
     public void startMainLoop(){
         Thread.currentThread().setName("main-loop");
         while(true){
             step();
             updateConcentrationImage();
+            updateMomentumImage();
         }
     }
     public void showFrame(){
         JFrame frame = new JFrame("Oil on Water");
         JPanel image = new JPanel(){
-            double zoom = 20;
+            double zoom = 256;
             @Override
             public void paintComponent(Graphics g){
                 g.drawImage(
                         visibleImage,
-                        0,
+                        (int)(xMomentumImage.getWidth(this)*zoom),
                         0,
                         (int)(visibleImage.getWidth(this)*zoom),
                         (int)(visibleImage.getHeight(this)*zoom),
+                        this
+                );
+
+                g.drawImage(
+                        xMomentumImage,
+                        0,
+                        0,
+                        (int)(xMomentumImage.getWidth(this)*zoom),
+                        (int)(xMomentumImage.getHeight(this)*zoom),
+                        this
+                );
+                g.drawImage(
+                        yMomentumImage,
+                        0,
+                        (int)(xMomentumImage.getHeight(this)*zoom),
+                        (int)(yMomentumImage.getWidth(this)*zoom),
+                        (int)(yMomentumImage.getHeight(this)*zoom),
                         this
                 );
             }
             @Override
             public Dimension getPreferredSize(){
                 return new Dimension(
-                        (int)(visibleImage.getWidth(this)*zoom),
-                        (int)(visibleImage.getHeight(this)*zoom)
+                        (int)(2*visibleImage.getWidth(this)*zoom),
+                        (int)(2*visibleImage.getHeight(this)*zoom)
                 );
             }
         };
