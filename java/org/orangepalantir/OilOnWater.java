@@ -9,15 +9,15 @@ import java.util.Arrays;
 import java.util.stream.IntStream;
 
 public class OilOnWater{
-    int height = 256;
-    int width = 256;
+    int height = 512;
+    int width = 512;
     double surfaceTension = 0.0;
     double diffusion = 0.0;
     double drag = 1.0;
     double viscosity = 1.0;
     double rad = 0.0;
 
-    double dt = 0.01;
+    double dt = 0.001;
 
     double[] concentration;
     double[] dc;
@@ -42,29 +42,42 @@ public class OilOnWater{
         dp = new double[2*width*height];
 
 
-        //createVerticalStripes();
+        createVerticalStripes();
         createHorizontalStripes();
+
+        double m = 5;
+        for(int i = 0; i<width; i++){
+            for(int j = 0; j<height; j++){
+                double px = m*Math.sin(i*Math.PI*1/width);
+                double py = m*Math.sin(j*Math.PI*3/height);
+                momentum[2*(i + j*width)] = py;
+                momentum[2*(i + j*width) + 1] = px;
+            }
+        }
+
+        /*
         for(int i = width/4;i<3*width/4; i++){
 
-            for(int j = 0; j<5; j++){
-                momentum[2*(i + (height/4+j)*width)] = 5;
-                momentum[2*(i + (3*height/4+j)*width)] = -5;
+            for(int j = 0; j<10; j++){
+                momentum[2*(i + (height/4+j)*width)] = 10;
+                momentum[2*(i + (3*height/4+j)*width)] = 10;
             }
 
         }
 
-        for(int i = 0; i<5; i++){
+        for(int i = 0; i<30; i++){
             for(int j = height/3; j<2*height/3; j++){
                 momentum[2*(i + width/4 +(j)*width)+1] = 5;
-                momentum[2*(i + 3*width/4 + (j)*width)+1] = -5;
+                momentum[2*(i + 3*width/4 + (j)*width)+1] = 5;
             }
         }
+        */
 
     }
     void createVerticalStripes(){
         for(int i = 0; i<width/20; i++){
             for(int j = 0; j<height; j++){
-                for(int k = 0; k<5; k++){
+                for(int k = 0; k<1; k++){
                     int x = 20*i + k;
                     int y = j;
                     concentration[x + y*width] = 5;
@@ -76,7 +89,7 @@ public class OilOnWater{
     void createHorizontalStripes(){
         for(int i = 0; i<width; i++){
             for(int j = 0; j<height/20; j++){
-                for(int k = 0; k<5; k++){
+                for(int k = 0; k<1; k++){
                     int x = i;
                     int y = j*20 + k;
                     concentration[x + y*width] = 5;
@@ -134,7 +147,7 @@ public class OilOnWater{
         //flow in from left - flow out from right
         result[0] = vxAve*(Vl[0] - Vr[0]) + vyAve*(Vb[0] - Vt[0]);
 
-        result[1] = vxAve*(Vl[1] - Vr[1]) + vyAve*(Vb[0] - Vt[0]);
+        result[1] = vxAve*(Vl[1] - Vr[1]) + vyAve*(Vb[1] - Vt[1]);
 
     }
 
