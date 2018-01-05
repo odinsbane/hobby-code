@@ -6,27 +6,31 @@ import java.awt.event.MouseWheelEvent;
 import java.awt.event.MouseWheelListener;
 import java.awt.image.BufferedImage;
 import java.util.Arrays;
+import java.util.Random;
 import java.util.stream.IntStream;
 
 public class OilOnWater{
     int height = 512;
     int width = 512;
-    double surfaceTension = 0.0;
-    double diffusion = 0.0;
-    double drag = 1.0;
-    double viscosity = 1.0;
+    double surfaceTension = 15.0;
+    double dispersion = 10;
+    double couple = 10.0;
+    double viscosity = 10.0;
     double rad = 0.0;
-
-    double dt = 0.001;
-
+    double time = 0;
+    double dt = 1e-2;
+    double bias = 10;
+    Random ng = new Random();
+    double[] oil;
+    int particles = 0xf0000;
     double[] concentration;
-    double[] dc;
     double[] momentum;
     double[] dp;
     BufferedImage visibleImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
     BufferedImage xMomentumImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
     BufferedImage yMomentumImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
 
+    long realtime;
     OilOnWater(){
 
     }
@@ -36,64 +40,97 @@ public class OilOnWater{
      * Starts simulation with the currently set parameters.
      */
     public void startSimulation(){
+        realtime = System.currentTimeMillis();
         concentration = new double[width*height];
+        oil = new double[2*particles];
+
         momentum = new double[2*width*height];
-        dc = new double[width*height];
+
         dp = new double[2*width*height];
 
 
-        createVerticalStripes();
-        createHorizontalStripes();
+        //createVerticalStripes(0);
+        //createHorizontalStripes(particles/2);
+        createSpots();
 
-        double m = 5;
+        double m = 2;
         for(int i = 0; i<width; i++){
             for(int j = 0; j<height; j++){
-                double px = m*Math.sin(i*Math.PI*1/width);
-                double py = m*Math.sin(j*Math.PI*3/height);
+                double px = m*Math.sin((i)*Math.PI*4/width);
+                double py = m*Math.sin(j*Math.PI*4/height);
                 momentum[2*(i + j*width)] = py;
                 momentum[2*(i + j*width) + 1] = px;
             }
         }
 
-        /*
-        for(int i = width/4;i<3*width/4; i++){
-
-            for(int j = 0; j<10; j++){
-                momentum[2*(i + (height/4+j)*width)] = 10;
-                momentum[2*(i + (3*height/4+j)*width)] = 10;
-            }
-
-        }
-
-        for(int i = 0; i<30; i++){
-            for(int j = height/3; j<2*height/3; j++){
-                momentum[2*(i + width/4 +(j)*width)+1] = 5;
-                momentum[2*(i + 3*width/4 + (j)*width)+1] = 5;
-            }
-        }
-        */
-
-    }
-    void createVerticalStripes(){
-        for(int i = 0; i<width/20; i++){
-            for(int j = 0; j<height; j++){
-                for(int k = 0; k<1; k++){
-                    int x = 20*i + k;
-                    int y = j;
-                    concentration[x + y*width] = 5;
-                }
-            }
-        }
     }
 
-    void createHorizontalStripes(){
-        for(int i = 0; i<width; i++){
-            for(int j = 0; j<height/20; j++){
-                for(int k = 0; k<1; k++){
-                    int x = i;
-                    int y = j*20 + k;
-                    concentration[x + y*width] = 5;
-                }
+    /**
+     * create N vertical stripes with half of the particles.
+     */
+    void createVerticalStripes(int start){
+        int N = 32;
+        int count = particles/2;
+
+        int particlesPerColumn = count/N;
+        double dy = height*1.0/particlesPerColumn;
+        double dx = width*1.0/N;
+        int laid = 0;
+        //column
+        for(int i = 0; i<N; i++){
+            for(int j = 0; j<particlesPerColumn; j++){
+                oil[2*(start + laid)] = dx*i;
+                oil[2*(start + laid) + 1] = dy*j;
+                laid++;
+            }
+        }
+
+
+
+    }
+    void createSpots(){
+        int n = 8;
+        int N = n*n;
+        double radius = 10;
+
+        int spotsPerDot = particles/N;
+        double dx = width/n;
+        double dy = height/n;
+
+        int count = 0;
+        for(int i = 0; i<N; i++){
+            double cx = ((i%n) + 0.5)*dx;
+            double cy = ((i/n) + 0.5)*dy;
+
+            for(int j = 0; j<spotsPerDot; j++){
+                double r = Math.random()*radius;
+                double theta = Math.random()*Math.PI*2;
+                oil[2*count] = Math.sin(theta)*r + cx;
+                oil[2*count+1] = Math.cos(theta)*r + cy;
+                count++;
+            }
+
+        }
+
+
+    }
+    /**
+     * create horizontal strings with half of the particles.
+     */
+    void createHorizontalStripes(int start){
+        int N=32;
+
+        int count = particles/2;
+        int particlesPerRow = count/N;
+        double dy = height*1.0/N;
+        double dx = width*1.0/particlesPerRow;
+
+        int laid = 0;
+        for(int i = 0; i<N; i++){
+            for(int j = 0; j<particlesPerRow; j++){
+                oil[2*(laid + start)] = dx*j;
+                oil[2*(laid + start) + 1] = dy*i;
+                laid++;
             }
         }
     }
@@ -218,11 +255,33 @@ public class OilOnWater{
 
     }
 
+    void getDispersion(double x, double y, double[] values, double[] result){
+        result[0] = 0;
+        result[1] = 0;
+        int ix = (int)x;
+        int iy = (int)y;
+        /*
+        double c1 = getOneDValue(ix-1, iy-1, values);
+        double c2 = getOneDValue(ix, iy-1, values);
+        double c3 = getOneDValue(ix+1, iy-1, values);
+        double c4 = getOneDValue(ix-1, iy, values);
+        double c6 = getOneDValue(ix+1, iy, values);
+        double c7 = getOneDValue(ix-1, iy+1, values);
+        double c8 = getOneDValue(ix, iy+1, values);
+        double c9 = getOneDValue(ix+1, iy+1, values);
+        */
+        double distance = ng.nextGaussian()*(getOneDValue(ix, iy, values)-1);
+        if(distance*dt>1){
+            distance = 1/dt;
+        }
+        double theta = 2*Math.PI*ng.nextDouble();
+        result[0] = distance*Math.sin(theta);
+        result[1] = distance*Math.cos(theta);
 
+    }
 
 
     public void step(){
-        double[] deltac = new double[2];
         double[] d2p = new double[2];
         double[] pdotdelp = new double[2];
         for(int i = 0; i<concentration.length; i++){
@@ -235,24 +294,85 @@ public class OilOnWater{
                       pdotdelp[0];
             dp[2*i+1] = d2p[1]*viscosity
                         + pdotdelp[1];
-            firstDerivative1D(x, y, concentration, deltac);
-            dc[i] = -momentum[2*i]*deltac[0] + -momentum[2*i+1]*deltac[1];
+            concentration[i] = 0;
         }
 
+        for(int i =0; i<particles; i++){
+            double x = oil[2*i];
+            double y = oil[2*i+1];
 
+            if(x<0) x = x+width;
+            if(x>=width) x = x - width;
+
+            if(y<0) y = y + height;
+            if(y>=height) y = y-height;
+
+
+            concentration[(int)x + (int)y*width] += 1;
+
+        }
+
+        double[] p = new double[2];
+        double[] t = new double[2];
+        double[] d = new double[2];
+        for(int i =0; i<particles; i++){
+            double x = oil[2*i];
+            double y = oil[2*i+1];
+
+            if(x<0) x = x+width;
+            if(x>=width) x = x - width;
+
+            if(y<0) y = y + height;
+            if(y>=height) y = y-height;
+
+            getTwoDValue((int)x, (int)y, momentum, p);
+            getSurfaceTension(x, y, concentration, t);
+            getDispersion(x, y, concentration, d);
+            x = x + (couple*p[0] + surfaceTension*t[0] + dispersion*d[0])*dt;
+            y = y + (couple*p[1] + surfaceTension*t[1] + dispersion*d[1])*dt;
+
+            if(x<0) x = x+width;
+            if(x>=width) x = x - width;
+
+            if(y<0) y = y + height;
+            if(y>=height) y = y-height;
+
+            oil[2*i] = x;
+            oil[2*i+1] = y;
+
+        }
+
+        for(int i =0; i<particles; i++){
+            double x = oil[2*i];
+            double y = oil[2*i+1];
+
+            if(x<0) x = x+width;
+            if(x>=width) x = x - width;
+
+            if(y<0) y = y + height;
+            if(y>=height) y = y-height;
+
+            int dex = (int)x + (int)y*width;
+            if(dex<0){
+                System.out.println("wtf?");
+            }
+            concentration[(int)x + (int)y*width] += 1;
+
+        }
 
         for(int i = 0; i<concentration.length; i++){
-            concentration[i] += dc[i]*dt;
-            concentration[i] = concentration[i]>0?concentration[i]:0;
             momentum[2*i] += dp[2*i]*dt;
             momentum[2*i+1] += dp[2*i+1]*dt;
         }
+
+        time += dt;
+
     }
 
     Color empty = Color.WHITE;
     Color full = Color.RED;
 
-    double bias = 1.0;
+
     Color interpolate(Color a, Color b, double f){
         int r = interpolate(a.getRed(), b.getRed(), f);
         int g = interpolate(a.getGreen(), b.getGreen(), f);
@@ -282,7 +402,26 @@ public class OilOnWater{
         }
         visibleImage = img;
     }
+    public void getSurfaceTension(double x, double y, double[] concentration, double[] v){
+        v[0] = 0;
+        v[1] = 0;
 
+        if(getOneDValue((int)x-1, (int)y, concentration)==0){
+            v[0] += 1;
+        }
+        if(getOneDValue((int)x+1, (int)y, concentration)==0){
+            v[0] += -1;
+        }
+
+        if(getOneDValue((int)x, (int) y-1, concentration)==0){
+            v[1] += 1;
+        }
+
+        if(getOneDValue((int)x, (int) y+1, concentration)==0){
+            v[1] += -1;
+        }
+
+    }
 
     public void updateMomentumImage(){
 
@@ -399,7 +538,7 @@ public class OilOnWater{
         Timer time = new Timer(30, evt->{ image.repaint();});
         time.start();
 
-        frame.setContentPane(image);
+        frame.setContentPane(new JScrollPane(image));
         frame.pack();
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setVisible(true);
