@@ -5,6 +5,7 @@ import java.awt.*;
 import java.awt.event.MouseWheelEvent;
 import java.awt.event.MouseWheelListener;
 import java.awt.image.BufferedImage;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Random;
 import java.util.stream.IntStream;
@@ -12,17 +13,16 @@ import java.util.stream.IntStream;
 public class OilOnWater{
     int height = 512;
     int width = 512;
-    double surfaceTension = 15.0;
-    double dispersion = 10;
-    double couple = 10.0;
-    double viscosity = 10.0;
+    double surfaceTension = 1.0;
+    double dispersion = 1;
+    double couple = 0.0;
+    double viscosity = 1000.0;
     double rad = 0.0;
     double time = 0;
-    double dt = 1e-2;
-    double bias = 10;
+    double dt = 1e-8;
     Random ng = new Random();
     double[] oil;
-    int particles = 0xf0000;
+    int particles = 0x1000;
     double[] concentration;
     double[] momentum;
     double[] dp;
@@ -30,6 +30,7 @@ public class OilOnWater{
     BufferedImage xMomentumImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
     BufferedImage yMomentumImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
 
+    double maxConcentration = 255;
     long realtime;
     OilOnWater(){
 
@@ -52,17 +53,41 @@ public class OilOnWater{
         //createVerticalStripes(0);
         //createHorizontalStripes(particles/2);
         createSpots();
+        momentumTorus();
 
+
+    }
+
+    public void momentumStrips(){
         double m = 2;
         for(int i = 0; i<width; i++){
             for(int j = 0; j<height; j++){
                 double px = m*Math.sin((i)*Math.PI*4/width);
                 double py = m*Math.sin(j*Math.PI*4/height);
                 momentum[2*(i + j*width)] = py;
-                momentum[2*(i + j*width) + 1] = px;
+                momentum[2*(i + j*width) + 1] = 0;
             }
         }
+    }
 
+    public void momentumTorus(){
+        double cx = 1.0*width/2;
+        double cy = 1.0*height/2;
+        double radius = 50;
+        double m = 1;
+        for(int i = 0; i<width; i++){
+            for(int j = 0; j<height; j++){
+                double dx = i - cx;
+                double dy = j - cy;
+                double r = Math.sqrt(dx*dx + dy*dy);
+                double sin = dx/r;
+                double cos = dy/r;
+                double f = Math.pow(r/radius, 2)*Math.exp(-r/radius);
+                if(r<25) f = 0;
+                momentum[2*(i + j*width)] = m*f*cos;
+                momentum[2*(i + j*width) + 1] = m*f*sin;
+            }
+        }
     }
 
     /**
@@ -89,7 +114,7 @@ public class OilOnWater{
 
     }
     void createSpots(){
-        int n = 8;
+        int n = 1;
         int N = n*n;
         double radius = 10;
 
@@ -103,7 +128,7 @@ public class OilOnWater{
             double cy = ((i/n) + 0.5)*dy;
 
             for(int j = 0; j<spotsPerDot; j++){
-                double r = Math.random()*radius;
+                double r = Math.sqrt(Math.random())*radius;
                 double theta = Math.random()*Math.PI*2;
                 oil[2*count] = Math.sin(theta)*r + cx;
                 oil[2*count+1] = Math.cos(theta)*r + cy;
@@ -254,29 +279,79 @@ public class OilOnWater{
         result[3] = 0.5*(p[1] - m[1]);
 
     }
-
+    final static double isqt2 = 1/Math.sqrt(2);
+    /**
+     * Gets a force that will push particles as if by diffusion.
+     * @param x
+     * @param y
+     * @param values
+     * @param result
+     */
     void getDispersion(double x, double y, double[] values, double[] result){
         result[0] = 0;
         result[1] = 0;
         int ix = (int)x;
         int iy = (int)y;
-        /*
-        double c1 = getOneDValue(ix-1, iy-1, values);
-        double c2 = getOneDValue(ix, iy-1, values);
-        double c3 = getOneDValue(ix+1, iy-1, values);
-        double c4 = getOneDValue(ix-1, iy, values);
-        double c6 = getOneDValue(ix+1, iy, values);
-        double c7 = getOneDValue(ix-1, iy+1, values);
-        double c8 = getOneDValue(ix, iy+1, values);
-        double c9 = getOneDValue(ix+1, iy+1, values);
-        */
-        double distance = ng.nextGaussian()*(getOneDValue(ix, iy, values)-1);
-        if(distance*dt>1){
-            distance = 1/dt;
+        int[] valid = new int[2*8];
+        int count = 0;
+
+        double c = getOneDValue(ix, iy, values);
+
+        double min = c;
+        for(int i = 0; i<3; i++){
+            for(int j = 0; j<3; j++){
+                if(i==1&&j==1){
+                    continue;
+                }
+                double c2 = getOneDValue(ix - 1 +i, iy - 1 + j, values);
+                if(c2<min){
+                    min=c2;
+                }
+            }
         }
-        double theta = 2*Math.PI*ng.nextDouble();
-        result[0] = distance*Math.sin(theta);
-        result[1] = distance*Math.cos(theta);
+
+        for(int i = 0; i<3; i++){
+            for(int j = 0; j<3; j++){
+                if(i==1&&j==1){
+                    continue;
+                }
+                double c2 = getOneDValue(ix - 1 +i, iy - 1 + j, values);
+                if(c2<=min){
+
+                    valid[2*count] = i - 1;
+                    valid[2*count + 1] = j - 1;
+                    count++;
+                }
+            }
+        }
+        if(count==0){
+            return;
+        }
+
+        int square = ng.nextInt(count);
+
+        double dx = valid[2*square];
+        double dy = valid[2*square+1];
+
+        double l;
+        double deltac = c - min;
+        if(deltac>100){
+            deltac = 100;
+        }
+
+        if(dx!=0&&dy!=0){
+            l = isqt2*deltac;
+        } else{
+            l = deltac;
+        }
+
+        double distance = ng.nextDouble();
+
+
+
+
+        result[0] = distance*dx*l;
+        result[1] = distance*dy*l;
 
     }
 
@@ -393,10 +468,10 @@ public class OilOnWater{
         BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_4BYTE_ABGR);
         for(int i = 0; i<concentration.length; i++){
             int c;
-            if(concentration[i]>bias){
+            if(concentration[i]>=maxConcentration){
                 c = full.getRGB();
             } else{
-                c = interpolate(full, empty, concentration[i]/bias).getRGB();
+                c = interpolate(full, empty, concentration[i]/maxConcentration).getRGB();
             }
             img.setRGB(i%width, i/width, c);
         }
