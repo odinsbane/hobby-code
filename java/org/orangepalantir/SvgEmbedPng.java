@@ -1,7 +1,5 @@
 package org.orangepalantir;
 
-import sun.security.util.ByteArrayTagOrder;
-
 import javax.imageio.ImageIO;
 import java.awt.Color;
 import java.awt.Graphics;
