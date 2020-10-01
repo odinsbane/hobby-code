@@ -1,37 +1,50 @@
 package org.orangepalantir;
 
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseWheelEvent;
 import java.awt.event.MouseWheelListener;
 import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Random;
 import java.util.stream.IntStream;
 
+/**
+ * The premise of this simulation is to create patterns in the oil cause by the flowing of water beneath. The oil is
+ * a collection of particles that move due to the flow of water underneath.
+ *
+ */
 public class OilOnWater{
-    int height = 512;
-    int width = 512;
-    double surfaceTension = 1.0;
-    double dispersion = 1;
-    double couple = 0.0;
-    double viscosity = 1000.0;
+    int height = 1024;
+    int width = 1024;
+    double surfaceTension = 30000.0;
+    double dispersion = 100.0;
+    double couple = 200.0;
+    double viscosity = 1.0;
     double rad = 0.0;
     double time = 0;
-    double dt = 1e-8;
+    double dt = 1e-3;
+    int dripRadius = 25;
     Random ng = new Random();
+    /* x,y coordinates of oil particles. */
     double[] oil;
-    int particles = 0x1000;
+    int particles = 0x8000;
+    /* height x width arrays for handling field components. */
     double[] concentration;
     double[] momentum;
     double[] dp;
-    BufferedImage visibleImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-    BufferedImage xMomentumImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-    BufferedImage yMomentumImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
 
-    double maxConcentration = 255;
+
+    double maxConcentration = 1.1;
     long realtime;
+    Gui gui = new Gui();
+    final static boolean NAN_CHECK = false;
+    final static boolean UPDATE_MOMENTUM = false ;
+
     OilOnWater(){
 
     }
@@ -53,9 +66,22 @@ public class OilOnWater{
         //createVerticalStripes(0);
         //createHorizontalStripes(particles/2);
         createSpots();
-        momentumTorus();
 
+        momentumStrips();
+        MomentumTorus torus = new MomentumTorus(width, height);
+        torus.radius = 80;
+        torus.thickness = 32;
+        torus.m = -0.5;
+        for(int i = 0; i<2; i++){
+            for(int j = 0; j<2; j++){
+                torus.momentumTorus((2*i+1)*width/4.0, (2*j+1)*height/4.0, momentum);
+            }
+        }
 
+        //torus.radius = 64;
+        //torus.thickness = 32;
+        //torus.m = 5;
+        //torus.momentumTorus(width/2.0, height/2, momentum);
     }
 
     public void momentumStrips(){
@@ -70,31 +96,11 @@ public class OilOnWater{
         }
     }
 
-    public void momentumTorus(){
-        double cx = 1.0*width/2;
-        double cy = 1.0*height/2;
-        double radius = 50;
-        double m = 1;
-        for(int i = 0; i<width; i++){
-            for(int j = 0; j<height; j++){
-                double dx = i - cx;
-                double dy = j - cy;
-                double r = Math.sqrt(dx*dx + dy*dy);
-                double sin = dx/r;
-                double cos = dy/r;
-                double f = Math.pow(r/radius, 2)*Math.exp(-r/radius);
-                if(r<25) f = 0;
-                momentum[2*(i + j*width)] = m*f*cos;
-                momentum[2*(i + j*width) + 1] = m*f*sin;
-            }
-        }
-    }
-
     /**
      * create N vertical stripes with half of the particles.
      */
     void createVerticalStripes(int start){
-        int N = 32;
+        int N = 64;
         int count = particles/2;
 
         int particlesPerColumn = count/N;
@@ -113,10 +119,15 @@ public class OilOnWater{
 
 
     }
+
+    /**
+     * Creates spots of particles.
+     *
+     */
     void createSpots(){
         int n = 1;
         int N = n*n;
-        double radius = 10;
+        double radius = 128;
 
         int spotsPerDot = particles/N;
         double dx = width/n;
@@ -143,7 +154,7 @@ public class OilOnWater{
      * create horizontal strings with half of the particles.
      */
     void createHorizontalStripes(int start){
-        int N=32;
+        int N=8;
 
         int count = particles/2;
         int particlesPerRow = count/N;
@@ -183,6 +194,12 @@ public class OilOnWater{
         int dex = 2*(x + y*width);
         result[0] = values[dex];
         result[1] = values[dex+1];
+
+        if(NAN_CHECK){
+            if(Double.isNaN(result[0]) || Double.isNaN(result[1])){
+                throw new RuntimeException("Its a NaN fire! " + x + y);
+            }
+        }
     }
 
     /**
@@ -208,8 +225,14 @@ public class OilOnWater{
         double vyAve = (V[1] + Vl[1] + Vr[1])/3;
         //flow in from left - flow out from right
         result[0] = vxAve*(Vl[0] - Vr[0]) + vyAve*(Vb[0] - Vt[0]);
-
         result[1] = vxAve*(Vl[1] - Vr[1]) + vyAve*(Vb[1] - Vt[1]);
+
+
+        if(NAN_CHECK){
+            if(Double.isNaN(result[0]) || Double.isNaN(result[1])){
+                throw new RuntimeException("Its a NaN fire! " + x + y);
+            }
+        }
 
     }
 
@@ -253,6 +276,11 @@ public class OilOnWater{
         result[0] = du_dxdx + du_dydy;
         result[1] = dv_dxdx + dv_dydy;
 
+        if(NAN_CHECK){
+            if(Double.isNaN(result[0]) || Double.isNaN(result[1])){
+                throw new RuntimeException("Its a NaN fire! " + x + y);
+            }
+        }
     }
 
     /**
@@ -288,117 +316,112 @@ public class OilOnWater{
      * @param result
      */
     void getDispersion(double x, double y, double[] values, double[] result){
-        result[0] = 0;
-        result[1] = 0;
-        int ix = (int)x;
-        int iy = (int)y;
-        int[] valid = new int[2*8];
-        int count = 0;
+        double cf = 0;
+        double cback = 0;
+        double ct = 0;
+        double cbot = 0;
 
-        double c = getOneDValue(ix, iy, values);
+        int y0 = (int)(y + 0.5);
+        int x0 = (int)(x + 0.5);
 
-        double min = c;
-        for(int i = 0; i<3; i++){
-            for(int j = 0; j<3; j++){
-                if(i==1&&j==1){
-                    continue;
-                }
-                double c2 = getOneDValue(ix - 1 +i, iy - 1 + j, values);
-                if(c2<min){
-                    min=c2;
-                }
-            }
-        }
+        int xf = x0 + 1;
+        int xb = x0 - 1;
+
+        int yt = y0 - 1;
+        int yb = y0 + 1;
 
         for(int i = 0; i<3; i++){
-            for(int j = 0; j<3; j++){
-                if(i==1&&j==1){
-                    continue;
-                }
-                double c2 = getOneDValue(ix - 1 +i, iy - 1 + j, values);
-                if(c2<=min){
-
-                    valid[2*count] = i - 1;
-                    valid[2*count + 1] = j - 1;
-                    count++;
-                }
+            double c = getOneDValue(xf, y0 - 1 +i, values);
+            if(c > maxConcentration){
+                cf += (c - maxConcentration);
             }
+            c = getOneDValue(xb, y0 - 1 + i, values);
+            if ( c > maxConcentration){
+                cback += (c - maxConcentration);
+            }
+
+            c = getOneDValue(x0 -1 + i, yt, values);
+            if ( c > maxConcentration){
+                ct += (c - maxConcentration);
+            }
+            c = getOneDValue(x0 -1 + i, yb, values);
+            if ( c > maxConcentration){
+                cbot += (c - maxConcentration);
+            }
+
+
         }
-        if(count==0){
+
+
+
+        result[0] = - cf + cback; //away from high concentration.
+        result[1] = ct - cbot;
+        if(Double.isNaN(result[0]) || Double.isNaN(result[1])){
+            throw new RuntimeException("Dispersive NaN is a fire! " + x + y);
+        }
+    }
+    public void takeSnapShot(){
+        if(snapshots > 1000){
             return;
         }
-
-        int square = ng.nextInt(count);
-
-        double dx = valid[2*square];
-        double dy = valid[2*square+1];
-
-        double l;
-        double deltac = c - min;
-        if(deltac>100){
-            deltac = 100;
+        try {
+            ImageIO.write(gui.visibleImage, "PNG", new File(String.format("snap-%04d.png", snapshots)));
+            snapshots++;
+        } catch (IOException e) {
+            e.printStackTrace();
         }
-
-        if(dx!=0&&dy!=0){
-            l = isqt2*deltac;
-        } else{
-            l = deltac;
-        }
-
-        double distance = ng.nextDouble();
-
-
-
-
-        result[0] = distance*dx*l;
-        result[1] = distance*dy*l;
-
     }
 
+    static double constrain( double v, double limit){
+        if(v >= limit){
+            while( v >= limit ){
+                v = v - limit;
+            }
+        } else if( v < 0){
+            while( v < 0){
+                v = v + limit;
+            }
+        }
 
+        return v;
+    }
     public void step(){
         double[] d2p = new double[2];
         double[] pdotdelp = new double[2];
+
+        //update momentum field.
         for(int i = 0; i<concentration.length; i++){
 
-            int x = i%width;
-            int y = i/width;
-            convectiveTerm(x, y, momentum, pdotdelp);
-            laplace2D(x, y, momentum, d2p);
-            dp[2*i] = d2p[0]*viscosity +
-                      pdotdelp[0];
-            dp[2*i+1] = d2p[1]*viscosity
+            if(UPDATE_MOMENTUM) {
+                int x = i % width;
+                int y = i / width;
+
+                convectiveTerm(x, y, momentum, pdotdelp);
+                laplace2D(x, y, momentum, d2p);
+                dp[2 * i] = d2p[0] * viscosity +
+                        pdotdelp[0];
+                dp[2 * i + 1] = d2p[1] * viscosity
                         + pdotdelp[1];
+            }
             concentration[i] = 0;
         }
 
+        //update concentration.
         for(int i =0; i<particles; i++){
             double x = oil[2*i];
             double y = oil[2*i+1];
-
-            if(x<0) x = x+width;
-            if(x>=width) x = x - width;
-
-            if(y<0) y = y + height;
-            if(y>=height) y = y-height;
-
-
-            concentration[(int)x + (int)y*width] += 1;
+            drip(x, y);
+            //concentration[(int)x + (int)y*width] += 1;
 
         }
 
         double[] p = new double[2];
         double[] t = new double[2];
         double[] d = new double[2];
+        //update particles.
         for(int i =0; i<particles; i++){
             double x = oil[2*i];
             double y = oil[2*i+1];
-
-            if(x<0) x = x+width;
-            if(x>=width) x = x - width;
-
-            if(y<0) y = y + height;
-            if(y>=height) y = y-height;
 
             getTwoDValue((int)x, (int)y, momentum, p);
             getSurfaceTension(x, y, concentration, t);
@@ -406,227 +429,329 @@ public class OilOnWater{
             x = x + (couple*p[0] + surfaceTension*t[0] + dispersion*d[0])*dt;
             y = y + (couple*p[1] + surfaceTension*t[1] + dispersion*d[1])*dt;
 
-            if(x<0) x = x+width;
-            if(x>=width) x = x - width;
+            // only move to valid positions.
+            x = constrain(x, width);
+            y = constrain(y, height);
 
-            if(y<0) y = y + height;
-            if(y>=height) y = y-height;
 
             oil[2*i] = x;
             oil[2*i+1] = y;
 
         }
 
-        for(int i =0; i<particles; i++){
-            double x = oil[2*i];
-            double y = oil[2*i+1];
-
-            if(x<0) x = x+width;
-            if(x>=width) x = x - width;
-
-            if(y<0) y = y + height;
-            if(y>=height) y = y-height;
-
-            int dex = (int)x + (int)y*width;
-            if(dex<0){
-                System.out.println("wtf?");
+        if(UPDATE_MOMENTUM) {
+            for (int i = 0; i < concentration.length; i++) {
+                momentum[2 * i] += dp[2 * i] * dt;
+                momentum[2 * i + 1] += dp[2 * i + 1] * dt;
             }
-            concentration[(int)x + (int)y*width] += 1;
-
         }
-
-        for(int i = 0; i<concentration.length; i++){
-            momentum[2*i] += dp[2*i]*dt;
-            momentum[2*i+1] += dp[2*i+1]*dt;
-        }
-
         time += dt;
 
     }
 
-    Color empty = Color.WHITE;
-    Color full = Color.RED;
 
+    void drip(double x, double y){
+        int radius = dripRadius;
+        int x0 = (int) (x + 0.5);
+        int y0 = (int) (y + 0.5);
+        for(int i = 0; i<radius*2 + 1; i++ ){
+            for( int j = 0; j<radius*2 + 1; j++){
+                int xi = x0 + i - radius;
+                int yi = y0 + j - radius;
 
-    Color interpolate(Color a, Color b, double f){
-        int r = interpolate(a.getRed(), b.getRed(), f);
-        int g = interpolate(a.getGreen(), b.getGreen(), f);
-        int B = interpolate(a.getBlue(), b.getBlue(), f);
-        try{
-            return new Color(r, g, B);
-        } catch(Exception e){
-            System.out.println(f);
-        }
-        return Color.WHITE;
-    }
+                if( xi >= width ){
+                    while(xi >= width) {
+                        xi = xi - width;
+                    }
+                } else if( xi < 0 ){
+                    while(xi<0) {
+                        xi = width + xi;
+                    }
+                }
 
-    int interpolate(int a, int b, double f){
-        return (int)((a-b)*f + b);
-    }
+                if( yi >= height ){
+                    while(yi >= height) {
+                        yi = yi - height;
+                    }
+                } else if( yi < 0 ){
+                    while(yi<0) {
+                        yi = height + yi;
+                    }
+                }
 
-    public void updateConcentrationImage(){
-        BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_4BYTE_ABGR);
-        for(int i = 0; i<concentration.length; i++){
-            int c;
-            if(concentration[i]>=maxConcentration){
-                c = full.getRGB();
-            } else{
-                c = interpolate(full, empty, concentration[i]/maxConcentration).getRGB();
+                double di = i - radius;
+                di = di<0?-di:di;
+                double dj = j - radius;
+                dj = dj<0?-dj:dj;
+                double con = concentration[xi + width*yi] + ( 1.0 / ( 1.0 + di*di + dj*dj));
+
+                concentration[xi + width*yi] = con;
             }
-            img.setRGB(i%width, i/width, c);
+
         }
-        visibleImage = img;
+
     }
+
+
     public void getSurfaceTension(double x, double y, double[] concentration, double[] v){
         v[0] = 0;
         v[1] = 0;
 
-        if(getOneDValue((int)x-1, (int)y, concentration)==0){
-            v[0] += 1;
-        }
-        if(getOneDValue((int)x+1, (int)y, concentration)==0){
-            v[0] += -1;
-        }
+        double cb = getOneDValue((int)(x-0.5), (int)(y+0.5), concentration);
+        cb = cb>maxConcentration?maxConcentration : cb;
+        double cf = getOneDValue((int)(x+1.5), (int)(y+0.5), concentration);
+        cf = cf>maxConcentration?maxConcentration : cf;
+        double ct = getOneDValue((int)(x + 0.5), (int) (y - 0.5), concentration );
+        ct = ct > maxConcentration ? maxConcentration : ct;
+        double cbot = getOneDValue((int)(x + 0.5), (int)(y + 1.5), concentration);
+        cbot = cbot > maxConcentration ? maxConcentration : cbot;
+        v[0] = -cb + cf; //Go towards the high concentration.
+        v[1] = -ct + cbot;
 
-        if(getOneDValue((int)x, (int) y-1, concentration)==0){
-            v[1] += 1;
-        }
-
-        if(getOneDValue((int)x, (int) y+1, concentration)==0){
-            v[1] += -1;
-        }
 
     }
 
-    public void updateMomentumImage(){
 
-        BufferedImage xImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-        BufferedImage yImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-        double min = Double.MAX_VALUE;
-        double max = -min;
-        double sum = 0;
-        for(int i = 0; i<momentum.length; i++){
-            double p = momentum[i];
-            min = min<p?min:p;
-            max = p>max?p:max;
-            sum += p;
-        }
-
-        if(min>=0){
-            min = -1;
-        }
-        if(max<=0){
-            max = 1;
-        }
-
-
-        for(int i = 0; i<concentration.length; i++){
-
-            int c;
-            double p = momentum[2*i];
-            if(p>0){
-                c = interpolate(Color.RED, Color.BLACK, p/max).getRGB();
-            } else{
-                c = interpolate(Color.BLUE, Color.BLACK, p/min).getRGB();
-            }
-            xImage.setRGB(i%width, i/width, c);
-
-            p = momentum[2*i + 1];
-            if(p>0){
-                c = interpolate(Color.RED, Color.BLACK, p/max).getRGB();
-            } else{
-                c = interpolate(Color.BLUE, Color.BLACK, p/min).getRGB();
-            }
-            yImage.setRGB(i%width, i/width, c);
-
-        }
-        xMomentumImage = xImage;
-        yMomentumImage = yImage;
-    }
+    int stepsTaken = 0;
+    int snapshots = 0;
+    int period = (int)(0.01/dt);
 
     public void startMainLoop(){
         Thread.currentThread().setName("main-loop");
         while(true){
             step();
-            updateConcentrationImage();
-            updateMomentumImage();
+            gui.updateConcentrationImage();
+            gui.updateMomentumImage();
+            if(stepsTaken++ % period == 0){
+                takeSnapShot();
+            }
         }
     }
     double zoom = 1;
-    public void showFrame(){
-        JFrame frame = new JFrame("Oil on Water");
-        JPanel image = new JPanel(){
-
-            @Override
-            public void paintComponent(Graphics g){
-                g.drawImage(
-                        visibleImage,
-                        (int)(xMomentumImage.getWidth(this)*zoom),
-                        0,
-                        (int)(visibleImage.getWidth(this)*zoom),
-                        (int)(visibleImage.getHeight(this)*zoom),
-                        this
-                );
-
-                g.drawImage(
-                        xMomentumImage,
-                        0,
-                        0,
-                        (int)(xMomentumImage.getWidth(this)*zoom),
-                        (int)(xMomentumImage.getHeight(this)*zoom),
-                        this
-                );
-                g.drawImage(
-                        yMomentumImage,
-                        0,
-                        (int)(xMomentumImage.getHeight(this)*zoom),
-                        (int)(yMomentumImage.getWidth(this)*zoom),
-                        (int)(yMomentumImage.getHeight(this)*zoom),
-                        this
-                );
-            }
-            @Override
-            public Dimension getPreferredSize(){
-                return new Dimension(
-                        (int)(2*visibleImage.getWidth(this)*zoom),
-                        (int)(2*visibleImage.getHeight(this)*zoom)
-                );
-            }
-        };
-
-        image.addMouseWheelListener(new MouseWheelListener(){
-
-            @Override
-            public void mouseWheelMoved(MouseWheelEvent e) {
-
-                if(e.getWheelRotation()>0){
-                    zoom = zoom*0.99;
-                } else{
-                    zoom = zoom*1.01;
-                }
-                image.invalidate();
-                frame.validate();
-            }
-
-        });
-
-        Timer time = new Timer(30, evt->{ image.repaint();});
-        time.start();
-
-        frame.setContentPane(new JScrollPane(image));
-        frame.pack();
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setVisible(true);
+    void showFrame(){
+        gui.showFrame();
     }
 
     public static void main(String[] args){
         OilOnWater sim = new OilOnWater();
         sim.startSimulation();
         new Thread(sim::startMainLoop).start();
-        EventQueue.invokeLater(sim::showFrame);
+        //EventQueue.invokeLater(sim::showFrame);
     }
-
     //test everything!!!
 
+    class Gui{
+        BufferedImage visibleImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        BufferedImage xMomentumImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        BufferedImage yMomentumImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        Color pxPlus = Color.ORANGE;
+        Color pxMinus = Color.RED;
+        Color pyPlus = Color.YELLOW;
+        Color pyMinus = Color.BLUE;
+
+        Color empty = Color.BLACK;
+        Color full = Color.RED;
+
+        public void showFrame(){
+            JFrame frame = new JFrame("Oil on Water");
+            JPanel image = new JPanel(){
+
+                @Override
+                public void paintComponent(Graphics g){
+                    g.drawImage(
+                            visibleImage,
+                            (int)(xMomentumImage.getWidth(this)*zoom),
+                            0,
+                            (int)(visibleImage.getWidth(this)*zoom),
+                            (int)(visibleImage.getHeight(this)*zoom),
+                            this
+                    );
+
+                    g.drawImage(
+                            xMomentumImage,
+                            0,
+                            0,
+                            (int)(xMomentumImage.getWidth(this)*zoom),
+                            (int)(xMomentumImage.getHeight(this)*zoom),
+                            this
+                    );
+                    g.drawImage(
+                            yMomentumImage,
+                            0,
+                            (int)(xMomentumImage.getHeight(this)*zoom),
+                            (int)(yMomentumImage.getWidth(this)*zoom),
+                            (int)(yMomentumImage.getHeight(this)*zoom),
+                            this
+                    );
+                }
+                @Override
+                public Dimension getPreferredSize(){
+                    return new Dimension(
+                            (int)(2*visibleImage.getWidth(this)*zoom),
+                            (int)(2*visibleImage.getHeight(this)*zoom)
+                    );
+                }
+            };
+
+            image.addMouseWheelListener(new MouseWheelListener(){
+
+                @Override
+                public void mouseWheelMoved(MouseWheelEvent e) {
+                    if(e.getWheelRotation()>0){
+                        zoom = zoom*0.99;
+                    } else if(e.getWheelRotation()<0){
+                        zoom = zoom*1.01;
+                    }
+                    image.invalidate();
+                    frame.validate();
+                }
+
+            });
+
+            Timer time = new Timer(30, evt->{ image.repaint();});
+            time.start();
+
+            frame.setContentPane(new JScrollPane(image));
+            frame.pack();
+            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            frame.setVisible(true);
+        }
+
+
+        int interpolate(int a, int b, double f){
+            return (int)((a-b)*f + b);
+        }
+
+        Color interpolate(Color a, Color b, double f){
+            f = f>1?1:f;
+            f = f<0?0:f;
+            int r = interpolate(a.getRed(), b.getRed(), f);
+            int g = interpolate(a.getGreen(), b.getGreen(), f);
+            int B = interpolate(a.getBlue(), b.getBlue(), f);
+            try{
+                return new Color(r, g, B);
+            } catch(Exception e){
+                System.out.println(f);
+            }
+            return empty;
+        }
+
+        public void updateConcentrationImage(){
+            BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_4BYTE_ABGR);
+            for(int i = 0; i<concentration.length; i++){
+                int c;
+                if(concentration[i]>=maxConcentration){
+                    c = full.getRGB();
+                } else{
+                    c = interpolate(full, empty, concentration[i]/maxConcentration).getRGB();
+                }
+                img.setRGB(i%width, i/width, c);
+            }
+            visibleImage = img;
+        }
+
+        public void updateMomentumImage(){
+
+            BufferedImage xImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+            BufferedImage yImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+            double min = Double.MAX_VALUE;
+            double max = -min;
+            double sum = 0;
+            for(int i = 0; i<momentum.length; i++){
+                double p = momentum[i];
+                min = min<p?min:p;
+                max = p>max?p:max;
+                sum += p;
+            }
+
+            if(min>=0){
+                min = -1;
+            }
+            if(max<=0){
+                max = 1;
+            }
+
+
+            for(int i = 0; i<concentration.length; i++){
+
+                int c;
+                double p = momentum[2*i];
+                Color cx, cy;
+                if(p>0){
+                    cx =  interpolate(pxPlus, empty, p/max);
+                } else{
+                    cx = interpolate(pxMinus, empty, p/min);
+                }
+
+                xImage.setRGB(i%width, i/width, cx.getRGB());
+
+
+                p = momentum[2*i + 1];
+                if(p>0){
+                    cy = interpolate(pyPlus, empty, p/max);
+                } else{
+                    cy = interpolate(pyMinus, empty, p/min);
+                }
+
+
+                yImage.setRGB(i%width, i/width, addColors(cx, cy).getRGB());
+
+            }
+            xMomentumImage = xImage;
+            yMomentumImage = yImage;
+        }
+
+        int comp(int a, int b, int bg){
+            int i = bg - ( (bg - a) + (bg - b) );
+            i = i<0 ? 0: i;
+            i = i>255 ? 255 : i;
+            return i;
+        }
+        Color addColors(Color c1, Color c2){
+
+            int r = comp(c1.getRed(), c2.getRed(), empty.getRed());
+            int g = comp(c1.getGreen(),c2.getGreen(), empty.getGreen());
+            int b = comp(c1.getBlue(),c2.getBlue(), empty.getBlue());
+
+            return new Color(r,g,b);
+
+        }
+    }
+
+
+
+
+}
+
+class MomentumTorus{
+    double radius = 96;
+    double thickness = 16;
+    double m = 5;
+    int width;
+    int height;
+    MomentumTorus(int width, int height){
+        this.width = width;
+        this.height = height;
+    }
+    public void momentumTorus(double cx, double cy, double[] momentum){
+
+        for(int i = 0; i<width; i++){
+            for(int j = 0; j<height; j++){
+                double dx = i - cx;
+                double dy = -j + cy;
+                double r = Math.sqrt(dx*dx + dy*dy);
+                if(r == 0) r = 1;
+
+                double sin = dx/r;
+                double cos = dy/r;
+
+                double f = Math.exp( - Math.pow( r - radius, 2) / (2 * Math.pow(thickness, 2) )) ;
+
+                momentum[2*(i + j*width)] += m*f*cos;
+                momentum[2*(i + j*width) + 1] += m*f*sin;
+
+            }
+        }
+    }
 
 }
