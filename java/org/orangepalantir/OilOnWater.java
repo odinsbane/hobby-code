@@ -44,7 +44,7 @@ public class OilOnWater{
     Gui gui = new Gui();
     final static boolean NAN_CHECK = false;
     final static boolean UPDATE_MOMENTUM = false ;
-
+    static int SNAPSHOTS = - 1;
     OilOnWater(){
 
     }
@@ -125,9 +125,9 @@ public class OilOnWater{
      *
      */
     void createSpots(){
-        int n = 1;
+        int n = 32;
         int N = n*n;
-        double radius = 128;
+        double radius = 2;
 
         int spotsPerDot = particles/N;
         double dx = width/n;
@@ -361,7 +361,7 @@ public class OilOnWater{
         }
     }
     public void takeSnapShot(){
-        if(snapshots > 1000){
+        if(snapshots > SNAPSHOTS){
             return;
         }
         try {
@@ -536,7 +536,13 @@ public class OilOnWater{
         OilOnWater sim = new OilOnWater();
         sim.startSimulation();
         new Thread(sim::startMainLoop).start();
-        //EventQueue.invokeLater(sim::showFrame);
+        boolean headless = false;
+        if(headless){
+            SNAPSHOTS = 1000;
+        } else{
+            EventQueue.invokeLater(sim::showFrame);
+        }
+
     }
     //test everything!!!
 
